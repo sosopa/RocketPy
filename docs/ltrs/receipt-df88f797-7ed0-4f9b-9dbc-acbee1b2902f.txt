@@ -1,0 +1,89 @@
+{
+  "request-id": "df88f797-7ed0-4f9b-9dbc-acbee1b2902f",
+  "collection-id": "reanalysis-era5-pressure-levels",
+  "request": {
+    "day": [
+      "25"
+    ],
+    "area": [
+      38.5,
+      129,
+      36.5,
+      131
+    ],
+    "time": [
+      "20:00"
+    ],
+    "year": [
+      "2026"
+    ],
+    "month": [
+      "03"
+    ],
+    "variable": [
+      "geopotential",
+      "temperature",
+      "u_component_of_wind",
+      "v_component_of_wind"
+    ],
+    "data_format": "netcdf",
+    "product_type": [
+      "reanalysis"
+    ],
+    "pressure_level": [
+      "1",
+      "2",
+      "3",
+      "5",
+      "7",
+      "10",
+      "20",
+      "30",
+      "50",
+      "70",
+      "100",
+      "125",
+      "150",
+      "175",
+      "200",
+      "225",
+      "250",
+      "300",
+      "350",
+      "400",
+      "450",
+      "500",
+      "550",
+      "600",
+      "650",
+      "700",
+      "750",
+      "775",
+      "800",
+      "825",
+      "850",
+      "875",
+      "900",
+      "925",
+      "950",
+      "975",
+      "1000"
+    ],
+    "download_format": "zip"
+  },
+  "status": "successful",
+  "created-at": "2026-04-01T06:46:23.784337",
+  "started-at": "2026-04-01T06:46:42.401633",
+  "finished-at": "2026-04-01T06:46:54.733905",
+  "updated-at": "2026-04-01T06:46:54.733905",
+  "origin": "ui",
+  "collection-url": "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-pressure-levels",
+  "user-support-url": "https://support.ecmwf.int",
+  "licence": [
+    "CC-BY licence (version 1)",
+    "Data protection and privacy statement (version 24)",
+    "Terms of use of the Copernicus Climate Data Store (version 11)"
+  ],
+  "filename": "s3://cci2-prod-cache-3/2026-04-01/931c13c1cd85b0a6ab14ebd5c7816d40.zip",
+  "download-size": 83865
+}

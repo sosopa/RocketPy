@@ -172,3 +172,7 @@ cython_debug/
 
 # Mac
 .DS_Store
+
+# My
+wheels/
+*.ipynb
