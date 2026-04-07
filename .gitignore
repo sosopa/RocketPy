@@ -176,3 +176,5 @@ cython_debug/
 # My
 wheels/
 *.ipynb
+*.png
+*.csv
