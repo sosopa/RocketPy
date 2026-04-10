@@ -33,5 +33,5 @@ for h in heights:
 
     data.append([h, u, v, rho, T, P])
 
-np.savetxt("data/20260325/atmos_table.csv", data,
+np.savetxt("data/at20260325.csv", data,
            header="h,u,v,rho,T,P", delimiter=",")
