@@ -3,6 +3,7 @@
 #include <sstream>
 #include <string>
 #include <iostream>
+#include <cmath>
 
 struct Vec3 {
     double x;
@@ -46,6 +47,9 @@ struct AtmosData {
     double rho;
     double T;
     double P;
+
+    AtmosData() : wind(0.0, 0.0, 0.0), rho(0.0), T(0.0), P(0.0) {}
+    AtmosData(Vec3 wind_, double rho_, double T_, double P_) : wind(wind_), rho(rho_), T(T_), P(P_) {}
 };
 
 double lerp(double a, double b, double t) {
@@ -88,7 +92,7 @@ AtmosData getAtmosFromTable(double h, const std::vector<AtmosRow>& table) {
     AtmosData result;
 
     if (table.empty()) {
-        return AtmosData(Vec3(0, 0, 0), 0, 0, 0);
+        return AtmosData(Vec3(0., 0., 0.), 0., 0., 0.);
     }
 
     // Clamp below range
@@ -139,8 +143,8 @@ int main() {
     // double speed = V_rel.norm();
     // double drag = 0.5 * atmos.rho * speed * speed * Cd * A;
 
-    std::cout << "Wind: "
-              << atmos.wind.x << ", "
+    std::cout << "U-Wind: "
+              << atmos.wind.x << ", V-Wind: "
               << atmos.wind.y << ", Density: "
               << atmos.rho << std::endl;
 
