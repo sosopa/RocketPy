@@ -16,7 +16,7 @@ env_era5.set_atmospheric_model(
     dictionary="ECMWF",
 )
 
-env_era5.max_expected_height = 50000.0  # 0 ~ 50 km
+env_era5.max_expected_height = 22000.0  # 0 ~ 22 km(about ISA)
 height_space = env_era5.max_expected_height / 100 + 1
 
 env_era5.plots.atmospheric_model()

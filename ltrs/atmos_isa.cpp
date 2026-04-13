@@ -49,4 +49,3 @@ double T   = atm.T;
 double P   = atm.P;
 
 drag = 0.5 * atm.rho * V * V * Cd * A;
-
