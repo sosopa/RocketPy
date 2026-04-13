@@ -178,3 +178,4 @@ wheels/
 *.ipynb
 *.png
 *.csv
+*.out

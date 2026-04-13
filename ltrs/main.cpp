@@ -4,6 +4,7 @@
 #include <string>
 #include <iostream>
 #include <cmath>
+#include <algorithm>
 
 struct Vec3 {
     double x;
@@ -43,16 +44,13 @@ struct AtmosRow {
 };
 
 struct AtmosData {
-    Vec3 wind;   // (u, v, w)
+    Vec3 wind;
     double rho;
     double T;
     double P;
-
-    AtmosData() : wind(0.0, 0.0, 0.0), rho(0.0), T(0.0), P(0.0) {}
-    AtmosData(Vec3 wind_, double rho_, double T_, double P_) : wind(wind_), rho(rho_), T(T_), P(P_) {}
 };
 
-double lerp(double a, double b, double t) {
+inline double lerp(double a, double b, double t) {
     return a + t * (b - a);
 }
 
@@ -89,50 +87,71 @@ std::vector<AtmosRow> loadAtmosTable(const std::string& filename) {
 }
 
 AtmosData getAtmosFromTable(double h, const std::vector<AtmosRow>& table) {
-    AtmosData result;
+    AtmosData out{};
 
     if (table.empty()) {
-        return AtmosData(Vec3(0., 0., 0.), 0., 0., 0.);
+        return out;  // all zeros
     }
 
     // Clamp below range
     if (h <= table.front().h) {
-        return AtmosData(Vec3(table.front().u, table.front().v, 0.0), table.front().rho, table.front().T, table.front().P);
+        out.wind = Vec3(table.front().u, table.front().v, 0.0);
+        out.rho  = table.front().rho;
+        out.T    = table.front().T;
+        out.P    = table.front().P;
+        return out;
     }
 
     // Clamp above range
     if (h >= table.back().h) {
-        return AtmosData(Vec3(table.back().u, table.back().v, 0.0), table.back().rho, table.back().T, table.back().P);
+        out.wind = Vec3(table.back().u, table.back().v, 0.0);
+        out.rho  = table.back().rho;
+        out.T    = table.back().T;
+        out.P    = table.back().P;
+        return out;
     }
 
-    // Find interval
-    for (size_t i = 0; i < table.size() - 1; ++i) {
-        const auto& a = table[i];
-        const auto& b = table[i + 1];
-
-        if (h >= a.h && h <= b.h) {
-            double t = (h - a.h) / (b.h - a.h);
-
-            double u = lerp(a.u, b.u, t);
-            double v = lerp(a.v, b.v, t);
-            double rho = lerp(a.rho, b.rho, t);
-            double T = lerp(a.T, b.T, t);
-            double P = lerp(a.P, b.P, t);
-
-            result.wind = Vec3(u, v, 0.0);
-            result.rho  = rho;
-            result.T    = T;
-            result.P    = P;
-
-            return result;
+    // Binary search: first element with h_i >= h
+    auto it = std::lower_bound(
+        table.begin(), table.end(), h,
+        [](const AtmosRow& row, double value) {
+            return row.h < value;
         }
-    }
+    );
 
-    return AtmosData(Vec3(0, 0, 0), 0, 0, 0); // fallback
+    // Now:
+    // it       → upper point (h_i >= h)
+    // it - 1   → lower point
+    const AtmosRow& b = *it;
+    const AtmosRow& a = *(it - 1);
+
+    double t = (h - a.h) / (b.h - a.h);
+
+    // Interpolate all fields
+    double u   = lerp(a.u,   b.u,   t);
+    double v   = lerp(a.v,   b.v,   t);
+    double rho = lerp(a.rho, b.rho, t);
+    double T   = lerp(a.T,   b.T,   t);
+    double P   = lerp(a.P,   b.P,   t);
+
+    out.wind = Vec3(u, v, 0.0);
+    out.rho  = rho;
+    out.T    = T;
+    out.P    = P;
+
+    return out;
+}
+
+void sortAtmosTable(std::vector<AtmosRow>& table) {
+    std::sort(table.begin(), table.end(),
+        [](const AtmosRow& a, const AtmosRow& b) {
+            return a.h < b.h;
+        });
 }
 
 int main() {
     auto table = loadAtmosTable("data/at20260325.csv");
+    sortAtmosTable(table);
 
     double h = 1500.0;
 
