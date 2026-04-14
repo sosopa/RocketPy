@@ -1,9 +1,9 @@
+#include <cmath>
+
 const double T0 = 288.15;     // K
 const double P0 = 101325.0;   // Pa
 const double g0 = 9.80665;    // m/s²
 const double R  = 287.05;     // J/(kg·K)
-
-#include <cmath>
 
 struct Atmosphere {
     double T;   // Temperature (K)
@@ -12,11 +12,6 @@ struct Atmosphere {
 };
 
 Atmosphere isa(double h) {
-    const double T0 = 288.15;
-    const double P0 = 101325.0;
-    const double g0 = 9.80665;
-    const double R  = 287.05;
-
     Atmosphere atm;
 
     if (h <= 11000.0) {
