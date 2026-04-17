@@ -7,31 +7,28 @@
 #include <algorithm>
 
 struct Vec3 {
-    double x;
-    double y;
-    double z;
+    double x, y, z;
 
     // Constructors
     Vec3() : x(0.0), y(0.0), z(0.0) {}
     Vec3(double x_, double y_, double z_) : x(x_), y(y_), z(z_) {}
 
-    // Operator overloading
-    Vec3 operator+(const Vec3& other) const {
-        return Vec3(x + other.x, y + other.y, z + other.z);
-    }
-
-    Vec3 operator-(const Vec3& other) const {
-        return Vec3(x - other.x, y - other.y, z - other.z);
-    }
-
-    Vec3 operator*(double scalar) const {
-        return Vec3(x * scalar, y * scalar, z * scalar);
-    }
-
-    // Optional helpers
+    // norm (magnitude)
     double norm() const {
         return std::sqrt(x*x + y*y + z*z);
     }
+
+    // normalize (unit vector)
+    Vec3 normalize() const {
+        double n = norm();
+        if (n < 1e-8) return {0,0,0};
+        return {x/n, y/n, z/n};
+    }
+
+    // operators
+    Vec3 operator+(const Vec3& v) const { return {x+v.x, y+v.y, z+v.z}; }
+    Vec3 operator-(const Vec3& v) const { return {x-v.x, y-v.y, z-v.z}; }
+    Vec3 operator*(double s) const { return {x*s, y*s, z*s}; }
 };
 
 struct AtmosRow {
@@ -149,23 +146,40 @@ void sortAtmosTable(std::vector<AtmosRow>& table) {
         });
 }
 
+double Cd_table(double M) {
+    if (M < 0.8) return 0.3;
+    if (M < 1.2) return 0.6;  // drag rise
+    if (M < 3.0) return 0.25;
+    return 0.2;
+}
+
 int main() {
     auto table = loadAtmosTable("data/at20260325.csv");
     sortAtmosTable(table);
 
     double h = 1500.0;
 
-    AtmosData atmos = getAtmosFromTable(h, table);
+    AtmosData atm = getAtmosFromTable(h, table);
 
-    // Vec3 V_rel = V_body - atmos.wind;
+    Vec3 V_rel = V_body - V_wind;
+    double V = V_rel.norm();
 
-    // double speed = V_rel.norm();
-    // double drag = 0.5 * atmos.rho * speed * speed * Cd * A;
+    // Speed of sound
+    double a = sqrt(1.4 * 287.05 * atm.T);
+
+    // Mach number
+    double M = V / a;
+
+    // Drag coefficient
+    double Cd = Cd_table(M);
+
+    // Drag force
+    Vec3 drag = -0.5 * atm.rho * V * V * Cd * A * V_rel.normalize();
 
     std::cout << "U-Wind: "
-              << atmos.wind.x << ", V-Wind: "
-              << atmos.wind.y << ", Density: "
-              << atmos.rho << std::endl;
+              << atm.wind.x << ", V-Wind: "
+              << atm.wind.y << ", Density: "
+              << atm.rho << std::endl;
 
     return 0;
 }
