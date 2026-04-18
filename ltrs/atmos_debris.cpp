@@ -42,7 +42,7 @@ Vec3 computeAcceleration(const Debris& d, const AtmosData& atm) {
 
     Vec3 a_drag(0,0,0);
     if (V > 1e-6) {
-        a_drag = -0.5 * atm.rho * V * V / d.beta * (V_rel / V);
+        a_drag = (V_rel / V) * (-0.5 * atm.rho * V * V / d.beta);
     }
 
     // Gravity (simple spherical Earth)
@@ -56,7 +56,7 @@ Vec3 computeAcceleration(const Debris& d, const AtmosData& atm) {
     return g + a_drag + a_cor;
 }
 
-void propagateDebris(Debris& d, const std::vector<AtmosData>& table, double dt) {
+void propagateDebris(Debris& d, const std::vector<AtmosRow>& table, double dt) {
 
     while (true) {
 
@@ -108,7 +108,7 @@ ImpactPoint toLatLon(const Vec3& pos) {
 std::vector<ImpactPoint> runMonteCarlo(
     const Vec3& pos0,
     const Vec3& vel0,
-    const std::vector<AtmosData>& table,
+    const std::vector<AtmosRow>& table,
     int N)
 {
     std::vector<ImpactPoint> impacts;
