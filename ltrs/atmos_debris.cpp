@@ -1,130 +1,5 @@
 #include "atmos_debris.hpp"
 
-Debris sampleDebris(const Vec3& pos0, const Vec3& vel0) {
-    Debris d;
-
-    double r = randu();
-
-    double k;
-
-    if (r < 0.3) { // dense
-        d.m = lognormal(0.0, 1.0);
-        k = uniform(0.01, 0.03);
-        d.Cd = uniform(1.0, 1.3);
-    }
-    else if (r < 0.7) { // panel
-        d.m = lognormal(1.5, 0.7);
-        k = uniform(0.05, 0.15);
-        d.Cd = uniform(1.2, 1.8);
-    }
-    else { // light
-        d.m = lognormal(-2.0, 1.0);
-        k = uniform(0.2, 0.6);
-        d.Cd = uniform(1.5, 2.5);
-    }
-
-    d.A = k * pow(d.m, 2.0/3.0);
-    d.beta = d.m / (d.Cd * d.A);
-
-    // Initial state = telemetry + perturbation
-    d.pos = pos0;
-
-    Vec3 dv = randomDirection() * normal(0.0, 10.0); // ~10 m/s spread
-    d.vel = vel0 + dv;
-
-    return d;
-}
-
-Vec3 computeAcceleration(const Debris& d, const AtmosData& atm) {
-
-    Vec3 V_rel = d.vel - atm.wind;
-    double V = V_rel.norm();
-
-    Vec3 a_drag(0,0,0);
-    if (V > 1e-6) {
-        a_drag = (V_rel / V) * (-0.5 * atm.rho * V * V / d.beta);
-    }
-
-    // Gravity (simple spherical Earth)
-    double r = d.pos.norm();
-    Vec3 g = -MU / (r*r) * (d.pos / r);
-
-    // Coriolis
-    Vec3 omega(0, 0, OMEGA_EARTH);
-    Vec3 a_cor = -2.0 * cross(omega, d.vel);
-
-    return g + a_drag + a_cor;
-}
-
-void propagateDebris(Debris& d, const std::vector<AtmosRow>& table, double dt) {
-
-    while (true) {
-
-        double h = d.pos.norm() - EARTH_RADIUS;
-        if (h <= 0) break; // impact
-
-        AtmosData atm = getAtmosFromTable(h, table);
-
-        // RK4 integration
-        Vec3 k1_v = computeAcceleration(d, atm);
-        Vec3 k1_x = d.vel;
-
-        Debris d2 = d;
-        d2.vel += 0.5 * dt * k1_v;
-        d2.pos += 0.5 * dt * k1_x;
-
-        Vec3 k2_v = computeAcceleration(d2, atm);
-        Vec3 k2_x = d2.vel;
-
-        Debris d3 = d;
-        d3.vel += 0.5 * dt * k2_v;
-        d3.pos += 0.5 * dt * k2_x;
-
-        Vec3 k3_v = computeAcceleration(d3, atm);
-        Vec3 k3_x = d3.vel;
-
-        Debris d4 = d;
-        d4.vel += dt * k3_v;
-        d4.pos += dt * k3_x;
-
-        Vec3 k4_v = computeAcceleration(d4, atm);
-        Vec3 k4_x = d4.vel;
-
-        d.vel += dt / 6.0 * (k1_v + 2*k2_v + 2*k3_v + k4_v);
-        d.pos += dt / 6.0 * (k1_x + 2*k2_x + 2*k3_x + k4_x);
-    }
-}
-
-ImpactPoint toLatLon(const Vec3& pos) {
-    ImpactPoint p;
-
-    double r = pos.norm();
-    p.lat = asin(pos.z / r);
-    p.lon = atan2(pos.y, pos.x);
-
-    return p;
-}
-
-std::vector<ImpactPoint> runMonteCarlo(
-    const Vec3& pos0,
-    const Vec3& vel0,
-    const std::vector<AtmosRow>& table,
-    int N)
-{
-    std::vector<ImpactPoint> impacts;
-
-    for (int i = 0; i < N; ++i) {
-
-        Debris d = sampleDebris(pos0, vel0);
-
-        propagateDebris(d, table, 0.01); // dt = 10 ms
-
-        impacts.push_back(toLatLon(d.pos));
-    }
-
-    return impacts;
-}
-
 inline double lerp(double a, double b, double t) {
     return a + t * (b - a);
 }
@@ -222,6 +97,131 @@ void sortAtmosTable(std::vector<AtmosRow>& table) {
         [](const AtmosRow& a, const AtmosRow& b) {
             return a.h < b.h;
         });
+}
+
+Debris sampleDebris(const Vec3& pos0, const Vec3& vel0) {
+    Debris d;
+
+    double r = randu();
+
+    double k;
+
+    if (r < 0.3) { // dense
+        d.m = lognormal(0.0, 1.0);
+        k = uniform(0.01, 0.03);
+        d.Cd = uniform(1.0, 1.3);
+    }
+    else if (r < 0.7) { // panel
+        d.m = lognormal(1.5, 0.7);
+        k = uniform(0.05, 0.15);
+        d.Cd = uniform(1.2, 1.8);
+    }
+    else { // light
+        d.m = lognormal(-2.0, 1.0);
+        k = uniform(0.2, 0.6);
+        d.Cd = uniform(1.5, 2.5);
+    }
+
+    d.A = k * pow(d.m, 2.0/3.0);
+    d.beta = d.m / (d.Cd * d.A);
+
+    // Initial state = telemetry + perturbation
+    d.pos = pos0;
+
+    Vec3 dv = randomDirection() * normal(0.0, 10.0); // ~10 m/s spread
+    d.vel = vel0 + dv;
+
+    return d;
+}
+
+Vec3 computeAcceleration(const Debris& d, const AtmosData& atm) {
+
+    Vec3 V_rel = d.vel - atm.wind;
+    double V = V_rel.norm();
+
+    Vec3 a_drag(0,0,0);
+    if (V > 1e-6) {
+        a_drag = (V_rel / V) * (-0.5 * atm.rho * V * V / d.beta);
+    }
+
+    // Gravity (simple spherical Earth)
+    double r = d.pos.norm();
+    Vec3 g = -MU / (r*r) * (d.pos / r);
+
+    // Coriolis
+    Vec3 omega(0, 0, OMEGA_EARTH);
+    Vec3 a_cor = -2.0 * cross(omega, d.vel);
+
+    return g + a_drag + a_cor;
+}
+
+void propagateDebris(Debris& d, const std::vector<AtmosRow>& table, double dt) {
+
+    while (true) {
+
+        double h = d.pos.norm() - EARTH_RADIUS;
+        if (h <= 0) break; // impact
+
+        AtmosData atm = getAtmosFromTable(h, table);
+
+        // RK4 integration
+        Vec3 k1_v = computeAcceleration(d, atm);
+        Vec3 k1_x = d.vel;
+
+        Debris d2 = d;
+        d2.vel = d2.vel + 0.5 * dt * k1_v;
+        d2.pos = d2.pos + 0.5 * dt * k1_x;
+
+        Vec3 k2_v = computeAcceleration(d2, atm);
+        Vec3 k2_x = d2.vel;
+
+        Debris d3 = d;
+        d3.vel = d3.vel + 0.5 * dt * k2_v;
+        d3.pos = d3.pos + 0.5 * dt * k2_x;
+
+        Vec3 k3_v = computeAcceleration(d3, atm);
+        Vec3 k3_x = d3.vel;
+
+        Debris d4 = d;
+        d4.vel = d4.vel + dt * k3_v;
+        d4.pos = d4.pos + dt * k3_x;
+
+        Vec3 k4_v = computeAcceleration(d4, atm);
+        Vec3 k4_x = d4.vel;
+
+        d.vel = d.vel + dt / 6.0 * (k1_v + 2*k2_v + 2*k3_v + k4_v);
+        d.pos = d.pos + dt / 6.0 * (k1_x + 2*k2_x + 2*k3_x + k4_x);
+    }
+}
+
+ImpactPoint toLatLon(const Vec3& pos) {
+    ImpactPoint p;
+
+    double r = pos.norm();
+    p.lat = asin(pos.z / r);
+    p.lon = atan2(pos.y, pos.x);
+
+    return p;
+}
+
+std::vector<ImpactPoint> runMonteCarlo(
+    const Vec3& pos0,
+    const Vec3& vel0,
+    const std::vector<AtmosRow>& table,
+    int N)
+{
+    std::vector<ImpactPoint> impacts;
+
+    for (int i = 0; i < N; ++i) {
+
+        Debris d = sampleDebris(pos0, vel0);
+
+        propagateDebris(d, table, 0.01); // dt = 10 ms
+
+        impacts.push_back(toLatLon(d.pos));
+    }
+
+    return impacts;
 }
 
 int main() {

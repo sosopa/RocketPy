@@ -35,10 +35,11 @@ struct Vec3 {
     // operators
     Vec3 operator+(const Vec3& v) const { return Vec3{x+v.x, y+v.y, z+v.z}; }
     Vec3 operator-(const Vec3& v) const { return Vec3{x-v.x, y-v.y, z-v.z}; }
-    Vec3 operator*(double s, const Vec3& v) { return Vec3(v.x * s, v.y * s, v.z * s); }
     Vec3 operator*(double s) const { return Vec3(x*s, y*s, z*s);}
     Vec3 operator/(double s) const { return Vec3(x/s, y/s, z/s); }
 };
+
+Vec3 operator*(double s, const Vec3& v) { return Vec3(v.x * s, v.y * s, v.z * s); }
 
 struct AtmosRow {
     double h;
