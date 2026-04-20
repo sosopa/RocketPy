@@ -36,6 +36,13 @@ std::vector<AtmosRow> loadAtmosTable(const std::string& filename) {
     return table;
 }
 
+void sortAtmosTable(std::vector<AtmosRow>& table) {
+    std::sort(table.begin(), table.end(),
+        [](const AtmosRow& a, const AtmosRow& b) {
+            return a.h < b.h;
+        });
+}
+
 AtmosData getAtmosFromTable(double h, const std::vector<AtmosRow>& table) {
     AtmosData out{};
 
@@ -90,13 +97,6 @@ AtmosData getAtmosFromTable(double h, const std::vector<AtmosRow>& table) {
     out.P    = P;
 
     return out;
-}
-
-void sortAtmosTable(std::vector<AtmosRow>& table) {
-    std::sort(table.begin(), table.end(),
-        [](const AtmosRow& a, const AtmosRow& b) {
-            return a.h < b.h;
-        });
 }
 
 Debris sampleDebris(const Vec3& pos0, const Vec3& vel0) {
@@ -228,9 +228,53 @@ int main() {
     auto table = loadAtmosTable("data/at20260325.csv");
     sortAtmosTable(table);
 
-    // double h = 1500.0;
+    // ECEF trajectory from telemetry
+    Vec3 ecef_pos = geodeticToECEF(37 * M_PI / 180.0, 127 * M_PI / 180.0, 10000); // 37°N, 127°E, 10km
+    Vec3 ecef_vel(200, 100, -50); // m/s
 
-    // AtmosData atm = getAtmosFromTable(h, table);
+    auto v_ip = runMonteCarlo(ecef_pos, ecef_vel, table, 1000);
+
+    saveCSV(v_ip, "impact.csv");
+
+    // Mean
+    Vec3 mean(0,0,0);
+
+    for (auto& p : v_ip) {
+        mean = mean + latlonToUnit(p);
+    }
+
+    mean = mean / v_ip.size();
+    mean = mean.normalize();
+
+    // Covariance
+    double mean_x = 0, mean_y = 0;
+
+    std::vector<XY> pts;
+
+    for (auto& p : v_ip) {
+        XY xy = project(p, v_ip[0]); // use first or mean
+        pts.push_back(xy);
+        mean_x += xy.x;
+        mean_y += xy.y;
+    }
+
+    mean_x /= pts.size();
+    mean_y /= pts.size();
+
+    double cov_xx=0, cov_yy=0, cov_xy=0;
+
+    for (auto& p : pts) {
+        double dx = p.x - mean_x;
+        double dy = p.y - mean_y;
+
+        cov_xx += dx*dx;
+        cov_yy += dy*dy;
+        cov_xy += dx*dy;
+    }
+
+    cov_xx /= pts.size();
+    cov_yy /= pts.size();
+    cov_xy /= pts.size();
 
     // Vec3 V_rel = V_body - V_wind;
     // double V = V_rel.norm();

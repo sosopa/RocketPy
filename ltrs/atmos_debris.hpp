@@ -10,6 +10,7 @@
 const double MU = 3.986004418e14;       // [m^3/s^2] Earth gravitational parameter
 const double OMEGA_EARTH = 7.2921159e-5; // [rad/s]
 const double EARTH_RADIUS = 6371000.0;  // [m]
+const double M_PI = 3.1415926535;
 
 static std::mt19937 rng(std::random_device{}());
 
@@ -58,10 +59,10 @@ struct AtmosData {
 };
 
 struct Debris {
-    double m;
-    double A;
-    double Cd;
-    double beta;
+    double m;   // mass, LogNormal(μ=0, σ=1.0) → ~0.3–5 kg
+    double A;   // area, correlated with m
+    double Cd;  // drag coefficient, ~1.0–1.3
+    double beta;    // m/(Cd·A), 50–500 kg/m²
 
     Vec3 pos;
     Vec3 vel;
@@ -111,4 +112,56 @@ Vec3 randomDirection() {
         s * std::sin(theta),
         u
     );
+}
+
+Vec3 geodeticToECEF(double lat, double lon, double h) {
+    double R = EARTH_RADIUS + h;
+
+    double clat = cos(lat);
+    double slat = sin(lat);
+    double clon = cos(lon);
+    double slon = sin(lon);
+
+    return Vec3(
+        R * clat * clon,
+        R * clat * slon,
+        R * slat
+    );
+}
+
+void saveCSV(const std::vector<ImpactPoint>& pts, const std::string& filename) {
+    std::ofstream file(filename);
+    file << "lat,lon\n";
+
+    for (const auto& p : pts) {
+        file << p.lat * 180.0 / M_PI << "," 
+             << p.lon * 180.0 / M_PI << "\n";
+    }
+}
+
+Vec3 latlonToUnit(const ImpactPoint& p) {
+    double lat = p.lat;
+    double lon = p.lon;
+
+    return Vec3(
+        cos(lat)*cos(lon),
+        cos(lat)*sin(lon),
+        sin(lat)
+    );
+}
+
+struct XY {
+    double x, y;
+};
+
+XY project(const ImpactPoint& p, const ImpactPoint& ref) {
+    double dlat = p.lat - ref.lat;
+    double dlon = p.lon - ref.lon;
+
+    double R = EARTH_RADIUS;
+
+    double x = R * dlon * cos(ref.lat);
+    double y = R * dlat;
+
+    return {x, y};
 }

@@ -180,3 +180,5 @@ wheels/
 *.csv
 *.out
 *.zip
+*.obj
+*.exe
