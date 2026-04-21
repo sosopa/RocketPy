@@ -1,4 +1,5 @@
 #include "atmos_debris.h"
+#include "atmos_ellipse.h"
 
 inline double lerp(double a, double b, double t) {
     return a + t * (b - a);
@@ -262,65 +263,28 @@ int main() {
 
     saveCSV(v_ip, "impact.csv");
 
-    // Mean
-    Vec3 mean(0,0,0);
-
-    for (auto& p : v_ip) {
-        mean = mean + latlonToUnit(p);
-    }
-
-    mean = mean / v_ip.size();
-    mean = mean.normalize();
-
-    // Covariance
-    double mean_x = 0, mean_y = 0;
-
+    // 1. Project to XY
     std::vector<XY> pts;
-
     for (auto& p : v_ip) {
-        XY xy = project(p, v_ip[0]); // use first or mean
-        pts.push_back(xy);
-        mean_x += xy.x;
-        mean_y += xy.y;
+        pts.push_back(project(p, v_ip[0])); // use first or mean
     }
 
-    mean_x /= pts.size();
-    mean_y /= pts.size();
+    // 2. Compute stats
+    Vector2d mean;
+    Matrix2d cov = computeCovariance(pts, mean);
 
-    double cov_xx=0, cov_yy=0, cov_xy=0;
+    // 3. Ellipse
+    double a, b, theta;
+    computeEllipse(cov, mean, a, b, theta);
 
-    for (auto& p : pts) {
-        double dx = p.x - mean_x;
-        double dy = p.y - mean_y;
+    // 4. Generate ellipse
+    auto ellipse_xy = generateEllipsePoints(mean, a, b, theta);
 
-        cov_xx += dx*dx;
-        cov_yy += dy*dy;
-        cov_xy += dx*dy;
+    // 5. Convert back to lat/lon for plotting
+    std::vector<ImpactPoint> ellipse_ll;
+    for (auto& p : ellipse_xy) {
+        ellipse_ll.push_back(xyToLatLon(p, v_ip[0])); // use first or mean
     }
-
-    cov_xx /= pts.size();
-    cov_yy /= pts.size();
-    cov_xy /= pts.size();
-
-    // Vec3 V_rel = V_body - V_wind;
-    // double V = V_rel.norm();
-
-    // // Speed of sound
-    // double a = sqrt(1.4 * 287.05 * atm.T);
-
-    // // Mach number
-    // double M = V / a;
-
-    // // Drag coefficient
-    // double Cd = Cd_table(M);
-
-    // // Drag force
-    // Vec3 drag = -0.5 * atm.rho * V * V * Cd * A * V_rel.normalize();
-
-    // std::cout << "U-Wind: "
-    //           << atm.wind.x << ", V-Wind: "
-    //           << atm.wind.y << ", Density: "
-    //           << atm.rho << std::endl;
 
     return 0;
 }

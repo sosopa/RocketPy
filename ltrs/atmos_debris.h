@@ -3,14 +3,15 @@
 #include <sstream>
 #include <string>
 #include <iostream>
-#include <cmath>
 #include <random>
 #include <algorithm>
+
+#define _USE_MATH_DEFINES
+#include <cmath>
 
 const double MU = 3.986004418e14;       // [m^3/s^2] Earth gravitational parameter
 const double OMEGA_EARTH = 7.2921159e-5; // [rad/s]
 const double EARTH_RADIUS = 6371000.0;  // [m]
-const double M_PI = 3.1415926535;
 
 static std::mt19937 rng(std::random_device{}());
 
