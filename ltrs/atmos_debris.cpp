@@ -1,4 +1,4 @@
-#include "atmos_debris.hpp"
+#include "atmos_debris.h"
 
 inline double lerp(double a, double b, double t) {
     return a + t * (b - a);
@@ -103,7 +103,6 @@ Debris sampleDebris(const Vec3& pos0, const Vec3& vel0) {
     Debris d;
 
     double r = randu();
-
     double k;
 
     if (r < 0.3) { // dense
@@ -124,6 +123,7 @@ Debris sampleDebris(const Vec3& pos0, const Vec3& vel0) {
 
     d.A = k * pow(d.m, 2.0/3.0);
     d.beta = d.m / (d.Cd * d.A);
+    d.beta = std::clamp(d.beta, 0.1, 500.0);
 
     // Initial state = telemetry + perturbation
     d.pos = pos0;
@@ -156,12 +156,30 @@ Vec3 computeAcceleration(const Debris& d, const AtmosData& atm) {
 }
 
 void propagateDebris(Debris& d, const std::vector<AtmosRow>& table, double dt) {
+    int max_steps = 200000;  // ~2000 s if dt=0.01
+    int steps = 0;
 
     while (true) {
+        double r = d.pos.norm();
+        double h = r - EARTH_RADIUS;
 
-        double h = d.pos.norm() - EARTH_RADIUS;
-        if (h <= 0) break; // impact
+        if (h <= 0) break;
 
+        // safety: escape to space
+        if (r > EARTH_RADIUS + 200000) break;
+
+        // safety: NaN check
+        if (!std::isfinite(r)) {
+            std::cout << "NaN detected, aborting particle\n";
+            break;
+        }
+
+        if (++steps > max_steps) {
+            std::cout << "Max steps reached\n";
+            break;
+        }
+
+        h = std::clamp(h, table.front().h, table.back().h);
         AtmosData atm = getAtmosFromTable(h, table);
 
         // RK4 integration
@@ -191,6 +209,13 @@ void propagateDebris(Debris& d, const std::vector<AtmosRow>& table, double dt) {
 
         d.vel = d.vel + dt / 6.0 * (k1_v + 2*k2_v + 2*k3_v + k4_v);
         d.pos = d.pos + dt / 6.0 * (k1_x + 2*k2_x + 2*k3_x + k4_x);
+
+        if (steps % 10000 == 0) {
+            std::cout << "step=" << steps 
+                    << " h=" << h 
+                    << " V=" << d.vel.norm()
+                    << std::endl;
+        }
     }
 }
 
@@ -213,6 +238,7 @@ std::vector<ImpactPoint> runMonteCarlo(
     std::vector<ImpactPoint> impacts;
 
     for (int i = 0; i < N; ++i) {
+        std::cout << "Simulating debris " << i << std::endl;
 
         Debris d = sampleDebris(pos0, vel0);
 
