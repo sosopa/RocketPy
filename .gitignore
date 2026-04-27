@@ -175,6 +175,7 @@ cython_debug/
 
 # My
 wheels/
+Eigen/
 *.ipynb
 *.png
 *.csv
@@ -182,3 +183,4 @@ wheels/
 *.zip
 *.obj
 *.exe
+*.txt

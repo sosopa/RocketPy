@@ -1,5 +1,6 @@
 #include "atmos_debris.h"
-#include "atmos_ellipse.h"
+
+Vec3 operator*(double s, const Vec3& v) { return Vec3(v.x * s, v.y * s, v.z * s); }
 
 inline double lerp(double a, double b, double t) {
     return a + t * (b - a);
@@ -98,6 +99,99 @@ AtmosData getAtmosFromTable(double h, const std::vector<AtmosRow>& table) {
     out.P    = P;
 
     return out;
+}
+
+double randu() {
+    static std::uniform_real_distribution<double> dist(0.0, 1.0);
+    return dist(rng);
+}
+
+double uniform(double a, double b) {
+    std::uniform_real_distribution<double> dist(a, b);
+    return dist(rng);
+}
+
+double normal(double mean, double stddev) {
+    std::normal_distribution<double> dist(mean, stddev);
+    return dist(rng);
+}
+
+double lognormal(double mu, double sigma) {
+    std::lognormal_distribution<double> dist(mu, sigma);
+    return dist(rng);
+}
+
+Vec3 cross(const Vec3& a, const Vec3& b) {
+    return Vec3(
+        a.y*b.z - a.z*b.y,
+        a.z*b.x - a.x*b.z,
+        a.x*b.y - a.y*b.x
+    );
+}
+
+Vec3 randomDirection() {
+    double u = uniform(-1.0, 1.0);     // cos(theta)
+    double theta = uniform(0.0, 2*M_PI);
+
+    double s = std::sqrt(1 - u*u);
+
+    return Vec3(
+        s * std::cos(theta),
+        s * std::sin(theta),
+        u
+    );
+}
+
+Vec3 geodeticToECEF(double lat, double lon, double h) {
+    double R = EARTH_RADIUS + h;
+
+    double clat = cos(lat);
+    double slat = sin(lat);
+    double clon = cos(lon);
+    double slon = sin(lon);
+
+    return Vec3(
+        R * clat * clon,
+        R * clat * slon,
+        R * slat
+    );
+}
+
+void saveCSV(const std::vector<ImpactPoint>& pts, const std::string& filename) {
+    std::ofstream file(filename);
+    file << "lat,lon\n";
+
+    for (const auto& p : pts) {
+        file << p.lat * 180.0 / M_PI << "," 
+             << p.lon * 180.0 / M_PI << "\n";
+    }
+}
+
+Vec3 latlonToUnit(const ImpactPoint& p) {
+    double lat = p.lat;
+    double lon = p.lon;
+
+    return Vec3(
+        cos(lat)*cos(lon),
+        cos(lat)*sin(lon),
+        sin(lat)
+    );
+}
+
+struct XY {
+    double x, y;
+};
+
+XY project(const ImpactPoint& p, const ImpactPoint& ref) {
+    double dlat = p.lat - ref.lat;
+    double dlon = p.lon - ref.lon;
+
+    double R = EARTH_RADIUS;
+
+    double x = R * dlon * cos(ref.lat);
+    double y = R * dlat;
+
+    return {x, y};
 }
 
 Debris sampleDebris(const Vec3& pos0, const Vec3& vel0) {
@@ -249,6 +343,119 @@ std::vector<ImpactPoint> runMonteCarlo(
     }
 
     return impacts;
+}
+
+MatrixXd computeCovariance(const std::vector<XY>& pts, Vector2d& mean) {
+
+    int N = pts.size();
+
+    mean.setZero();
+
+    for (const auto& p : pts) {
+        mean(0) += p.x;
+        mean(1) += p.y;
+    }
+    mean /= N;
+
+    MatrixXd cov = MatrixXd::Zero(2,2);
+
+    for (const auto& p : pts) {
+        Vector2d d;
+        d << p.x - mean(0), p.y - mean(1);
+        cov += d * d.transpose();
+    }
+
+    cov /= N;  // or (N-1) if you want unbiased
+
+    return cov;
+}
+
+void computeEllipse(
+    const Matrix2d& cov,
+    const Vector2d& mean,
+    double& major_axis,
+    double& minor_axis,
+    double& angle)
+{
+    SelfAdjointEigenSolver<Matrix2d> solver(cov);
+
+    Vector2d eigenvalues = solver.eigenvalues();
+    Matrix2d eigenvectors = solver.eigenvectors();
+
+    // χ² value for 95% confidence (2 DOF)
+    double chi2 = 5.991;
+
+    // Axes lengths
+    major_axis = std::sqrt(chi2 * eigenvalues(1)); // larger eigenvalue
+    minor_axis = std::sqrt(chi2 * eigenvalues(0));
+
+    // Orientation (angle from x-axis)
+    Vector2d major_vec = eigenvectors.col(1);
+    angle = std::atan2(major_vec(1), major_vec(0));
+}
+
+std::vector<XY> generateEllipsePoints(
+    const Vector2d& mean,
+    double a, double b, double angle,
+    int n = 100)
+{
+    std::vector<XY> pts;
+
+    for (int i = 0; i < n; ++i) {
+        double t = 2.0 * M_PI * i / n;
+
+        double x = a * cos(t);
+        double y = b * sin(t);
+
+        // rotate
+        double xr = cos(angle)*x - sin(angle)*y;
+        double yr = sin(angle)*x + cos(angle)*y;
+
+        pts.push_back({ mean(0) + xr, mean(1) + yr });
+    }
+
+    return pts;
+}
+
+ImpactPoint xyToLatLon(const XY& p, const ImpactPoint& ref) {
+    ImpactPoint out;
+
+    out.lat = ref.lat + p.y / EARTH_RADIUS;
+    out.lon = ref.lon + p.x / (EARTH_RADIUS * cos(ref.lat));
+
+    return out;
+}
+
+int atmos_debris_main(std::vector<ImpactPoint> v_ip) {
+
+    saveCSV(v_ip, "impact.csv");
+
+    // 1. Project to XY
+    std::vector<XY> pts;
+    for (auto& p : v_ip) {
+        pts.push_back(project(p, v_ip[0])); // use first or mean
+    }
+
+    // 2. Compute stats
+    Vector2d mean;
+    Matrix2d cov = computeCovariance(pts, mean);
+
+    // 3. Ellipse
+    double a, b, theta;
+    computeEllipse(cov, mean, a, b, theta);
+
+    // 4. Generate ellipse
+    auto ellipse_xy = generateEllipsePoints(mean, a, b, theta);
+
+    // 5. Convert back to lat/lon for plotting
+    std::vector<ImpactPoint> ellipse_ll;
+    for (auto& p : ellipse_xy) {
+        ellipse_ll.push_back(xyToLatLon(p, v_ip[0])); // use first or mean
+    }
+
+    saveCSV(ellipse_ll, "ellipse.csv");
+
+    return 0;
 }
 
 int main() {

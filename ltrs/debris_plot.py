@@ -3,8 +3,10 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
 df = pd.read_csv("impact.csv")
-
 plt.scatter(df["lon"], df["lat"], s=5)
+
+ell = pd.read_csv("ellipse.csv")
+plt.plot(ell["lon"], ell["lat"], 'r-', linewidth=2)
 
 ax = plt.gca()
 ax.ticklabel_format(style='plain', axis='both')

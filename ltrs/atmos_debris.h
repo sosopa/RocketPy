@@ -1,3 +1,4 @@
+#pragma once
 #include <vector>
 #include <fstream>
 #include <sstream>
@@ -8,6 +9,12 @@
 
 #define _USE_MATH_DEFINES
 #include <cmath>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+#include "Eigen/Dense"
+using namespace Eigen;
 
 const double MU = 3.986004418e14;       // [m^3/s^2] Earth gravitational parameter
 const double OMEGA_EARTH = 7.2921159e-5; // [rad/s]
@@ -41,8 +48,6 @@ struct Vec3 {
     Vec3 operator/(double s) const { return Vec3(x/s, y/s, z/s); }
 };
 
-Vec3 operator*(double s, const Vec3& v) { return Vec3(v.x * s, v.y * s, v.z * s); }
-
 struct AtmosRow {
     double h;
     double u;
@@ -74,95 +79,7 @@ struct ImpactPoint {
     double lon;
 };
 
-double randu() {
-    static std::uniform_real_distribution<double> dist(0.0, 1.0);
-    return dist(rng);
-}
-
-double uniform(double a, double b) {
-    std::uniform_real_distribution<double> dist(a, b);
-    return dist(rng);
-}
-
-double normal(double mean, double stddev) {
-    std::normal_distribution<double> dist(mean, stddev);
-    return dist(rng);
-}
-
-double lognormal(double mu, double sigma) {
-    std::lognormal_distribution<double> dist(mu, sigma);
-    return dist(rng);
-}
-
-Vec3 cross(const Vec3& a, const Vec3& b) {
-    return Vec3(
-        a.y*b.z - a.z*b.y,
-        a.z*b.x - a.x*b.z,
-        a.x*b.y - a.y*b.x
-    );
-}
-
-Vec3 randomDirection() {
-    double u = uniform(-1.0, 1.0);     // cos(theta)
-    double theta = uniform(0.0, 2*M_PI);
-
-    double s = std::sqrt(1 - u*u);
-
-    return Vec3(
-        s * std::cos(theta),
-        s * std::sin(theta),
-        u
-    );
-}
-
-Vec3 geodeticToECEF(double lat, double lon, double h) {
-    double R = EARTH_RADIUS + h;
-
-    double clat = cos(lat);
-    double slat = sin(lat);
-    double clon = cos(lon);
-    double slon = sin(lon);
-
-    return Vec3(
-        R * clat * clon,
-        R * clat * slon,
-        R * slat
-    );
-}
-
-void saveCSV(const std::vector<ImpactPoint>& pts, const std::string& filename) {
-    std::ofstream file(filename);
-    file << "lat,lon\n";
-
-    for (const auto& p : pts) {
-        file << p.lat * 180.0 / M_PI << "," 
-             << p.lon * 180.0 / M_PI << "\n";
-    }
-}
-
-Vec3 latlonToUnit(const ImpactPoint& p) {
-    double lat = p.lat;
-    double lon = p.lon;
-
-    return Vec3(
-        cos(lat)*cos(lon),
-        cos(lat)*sin(lon),
-        sin(lat)
-    );
-}
-
-struct XY {
-    double x, y;
-};
-
-XY project(const ImpactPoint& p, const ImpactPoint& ref) {
-    double dlat = p.lat - ref.lat;
-    double dlon = p.lon - ref.lon;
-
-    double R = EARTH_RADIUS;
-
-    double x = R * dlon * cos(ref.lat);
-    double y = R * dlat;
-
-    return {x, y};
-}
+std::vector<AtmosRow> loadAtmosTable(const std::string& filename);
+void sortAtmosTable(std::vector<AtmosRow>& table);
+std::vector<ImpactPoint> runMonteCarlo(const Vec3& pos0, const Vec3& vel0, const std::vector<AtmosRow>& table, int N);
+int atmos_debris_main(std::vector<ImpactPoint> v_ip);
