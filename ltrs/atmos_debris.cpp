@@ -426,9 +426,60 @@ ImpactPoint xyToLatLon(const XY& p, const ImpactPoint& ref) {
     return out;
 }
 
-int atmos_debris_main(std::vector<ImpactPoint> v_ip) {
+std::vector<State> generateTrajectory(double dt = 0.1)
+{
+    std::vector<State> traj;
 
-    saveCSV(v_ip, "impact.csv");
+    // Initial conditions (ENU)
+    Vec3 pos = {0.0, 0.0, 10000.0};   // meters
+    Vec3 vel = {250.0, 50.0, -20.0};  // m/s
+
+    const double g = 9.81;
+
+    double t = 0.0;
+
+    while (pos.z > 0.0)
+    {
+        traj.push_back({t, pos, vel});
+
+        // Update position
+        pos.x += vel.x * dt;
+        pos.y += vel.y * dt;
+        pos.z += vel.z * dt - 0.5 * g * dt * dt;
+
+        // Update velocity
+        vel.z -= g * dt;
+
+        t += dt;
+    }
+
+    return traj;
+}
+
+Vec3 enuToECEF(const Vec3& enu, double lat, double lon)
+{
+    double sinLat = sin(lat);
+    double cosLat = cos(lat);
+    double sinLon = sin(lon);
+    double cosLon = cos(lon);
+
+    Vec3 ecef;
+
+    ecef.x = -sinLon * enu.x
+             - sinLat * cosLon * enu.y
+             + cosLat * cosLon * enu.z;
+
+    ecef.y =  cosLon * enu.x
+             - sinLat * sinLon * enu.y
+             + cosLat * sinLon * enu.z;
+
+    ecef.z =  cosLat * enu.y
+             + sinLat * enu.z;
+
+    return ecef;
+}
+
+void ellipse_main(std::vector<ImpactPoint> v_ip) {
 
     // 1. Project to XY
     std::vector<XY> pts;
@@ -454,44 +505,42 @@ int atmos_debris_main(std::vector<ImpactPoint> v_ip) {
     }
 
     saveCSV(ellipse_ll, "ellipse.csv");
-
-    return 0;
 }
 
 int main() {
     auto table = loadAtmosTable("data/at20260325.csv");
     sortAtmosTable(table);
 
+    std::vector<ImpactPoint> v_ip;
+    std::vector<ImpactPoint> v_ip_sum;
+    
+    // Reference point
+    double lat = 37.0 * M_PI / 180.0;
+    double lon = 127.0 * M_PI / 180.0;
+    double alt = 10000.0;
+    Vec3 ref_ecef = geodeticToECEF(lat, lon, alt);
+
     // ECEF trajectory from telemetry
-    Vec3 ecef_pos = geodeticToECEF(37 * M_PI / 180.0, 127 * M_PI / 180.0, 10000); // 37°N, 127°E, 10km
-    Vec3 ecef_vel(200, 100, -50); // m/s
+    auto trajectory = generateTrajectory();
+    for (auto& tj : trajectory) {
+        // For each trajectory point
+        Vec3 enu = tj.pos;
+        Vec3 ecef_offset = enuToECEF(enu, lat, lon);
 
-    auto v_ip = runMonteCarlo(ecef_pos, ecef_vel, table, 1000);
+        Vec3 ecef_pos = {
+            ref_ecef.x + ecef_offset.x,
+            ref_ecef.y + ecef_offset.y,
+            ref_ecef.z + ecef_offset.z
+        };
+        
+        v_ip = runMonteCarlo(ecef_pos, tj.vel, table, 10);
+        v_ip_sum.reserve(v_ip_sum.size() + v_ip.size());
+        v_ip_sum.insert(v_ip_sum.end(), v_ip.begin(), v_ip.end());
+    };
 
-    saveCSV(v_ip, "impact.csv");
+    saveCSV(v_ip_sum, "impact.csv");
 
-    // 1. Project to XY
-    std::vector<XY> pts;
-    for (auto& p : v_ip) {
-        pts.push_back(project(p, v_ip[0])); // use first or mean
-    }
-
-    // 2. Compute stats
-    Vector2d mean;
-    Matrix2d cov = computeCovariance(pts, mean);
-
-    // 3. Ellipse
-    double a, b, theta;
-    computeEllipse(cov, mean, a, b, theta);
-
-    // 4. Generate ellipse
-    auto ellipse_xy = generateEllipsePoints(mean, a, b, theta);
-
-    // 5. Convert back to lat/lon for plotting
-    std::vector<ImpactPoint> ellipse_ll;
-    for (auto& p : ellipse_xy) {
-        ellipse_ll.push_back(xyToLatLon(p, v_ip[0])); // use first or mean
-    }
+    ellipse_main(v_ip_sum);
 
     return 0;
 }

@@ -13,7 +13,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#include "Eigen/Dense"
+#include "../eigen-5.0.0/Eigen/Dense"
 using namespace Eigen;
 
 const double MU = 3.986004418e14;       // [m^3/s^2] Earth gravitational parameter
@@ -46,6 +46,12 @@ struct Vec3 {
     Vec3 operator-(const Vec3& v) const { return Vec3{x-v.x, y-v.y, z-v.z}; }
     Vec3 operator*(double s) const { return Vec3(x*s, y*s, z*s);}
     Vec3 operator/(double s) const { return Vec3(x/s, y/s, z/s); }
+};
+
+struct State {
+    double t;
+    Vec3 pos; // ENU
+    Vec3 vel;
 };
 
 struct AtmosRow {
@@ -82,4 +88,5 @@ struct ImpactPoint {
 std::vector<AtmosRow> loadAtmosTable(const std::string& filename);
 void sortAtmosTable(std::vector<AtmosRow>& table);
 std::vector<ImpactPoint> runMonteCarlo(const Vec3& pos0, const Vec3& vel0, const std::vector<AtmosRow>& table, int N);
-int atmos_debris_main(std::vector<ImpactPoint> v_ip);
+void saveCSV(const std::vector<ImpactPoint>& pts, const std::string& filename);
+void ellipse_main(std::vector<ImpactPoint> v_ip);

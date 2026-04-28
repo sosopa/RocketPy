@@ -175,7 +175,7 @@ cython_debug/
 
 # My
 wheels/
-Eigen/
+eigen-5.0.0/
 *.ipynb
 *.png
 *.csv
