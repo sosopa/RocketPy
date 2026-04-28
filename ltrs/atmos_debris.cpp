@@ -197,7 +197,7 @@ Vec3 geodeticToECEF(double lat, double lon, double h) {
 
 void saveCSV(const std::vector<ImpactPoint>& pts, const std::string& filename) {
     std::ofstream file(filename);
-    file << "lat,lon\n";
+    // file << "lat,lon\n";
 
     for (const auto& p : pts) {
         file << p.lat * 180.0 / M_PI << "," 
