@@ -16,11 +16,24 @@
 #include "../eigen-5.0.0/Eigen/Dense"
 using namespace Eigen;
 
+enum class AtmosMode {
+    VACUUM,
+    ISA,
+    ERA5
+};
+AtmosMode atmos_mode = AtmosMode::VACUUM;
+
+const double T0 = 288.15;     // K
+const double P0 = 101325.0;   // Pa
+const double g0 = 9.80665;    // m/s²
+const double R  = 287.05;     // J/(kg·K)
+
 const double MU = 3.986004418e14;       // [m^3/s^2] Earth gravitational parameter
 const double OMEGA_EARTH = 7.2921159e-5; // [rad/s]
 const double EARTH_RADIUS = 6371000.0;  // [m]
 
-static std::mt19937 rng(std::random_device{}());
+unsigned int seed = std::random_device{}();
+std::mt19937 rng(seed);
 
 struct Vec3 {
     double x, y, z;

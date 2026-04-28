@@ -101,6 +101,44 @@ AtmosData getAtmosFromTable(double h, const std::vector<AtmosRow>& table) {
     return out;
 }
 
+AtmosData isa(double h) {
+    AtmosData atm;
+
+    if (h <= 11000.0) {
+        // Troposphere
+        double L = -0.0065;
+
+        atm.T = T0 + L * h;
+        atm.P = P0 * pow(atm.T / T0, -g0 / (R * L));
+    }
+    else {
+        // Tropopause (11 km ~ 20 km)
+        double T11 = 216.65;  // K
+        double P11 = 22632.1; // Pa
+
+        atm.T = T11;
+        atm.P = P11 * exp(-g0 * (h - 11000.0) / (R * T11));
+    }
+
+    atm.rho = atm.P / (R * atm.T);
+
+    return atm;
+}
+
+AtmosData getAtmos(AtmosMode mode, double h, const std::vector<AtmosRow>& table) {
+    if (mode == AtmosMode::ERA5)
+        return getAtmosFromTable(h, table);
+
+    if (mode == AtmosMode::ISA)
+        return isa(h);
+
+    if (mode == AtmosMode::VACUUM)
+        return {{0.0, 0.0, 0.0}, 0.0, 0.0, 0.0};
+
+    // fallback
+    return {{0.0, 0.0, 0.0}, 0.0, 0.0, 0.0};
+}
+
 double randu() {
     static std::uniform_real_distribution<double> dist(0.0, 1.0);
     return dist(rng);
@@ -230,7 +268,6 @@ Debris sampleDebris(const Vec3& pos0, const Vec3& vel0) {
 }
 
 Vec3 computeAcceleration(const Debris& d, const AtmosData& atm) {
-
     Vec3 V_rel = d.vel - atm.wind;
     double V = V_rel.norm();
 
@@ -250,7 +287,7 @@ Vec3 computeAcceleration(const Debris& d, const AtmosData& atm) {
     return g + a_drag + a_cor;
 }
 
-void propagateDebris(Debris& d, const std::vector<AtmosRow>& table, double dt) {
+bool propagateDebris(Debris& d, const std::vector<AtmosRow>& table, double dt) {
     int max_steps = 200000;  // ~2000 s if dt=0.01
     int steps = 0;
 
@@ -258,24 +295,27 @@ void propagateDebris(Debris& d, const std::vector<AtmosRow>& table, double dt) {
         double r = d.pos.norm();
         double h = r - EARTH_RADIUS;
 
-        if (h <= 0) break;
+        if (h <= 0) return true;  // impact
 
         // safety: escape to space
-        if (r > EARTH_RADIUS + 200000) break;
-
+        if (r > EARTH_RADIUS + 200000) {
+            std::cout << "!> Escape to space\n";
+            return false;
+        }
+        
         // safety: NaN check
         if (!std::isfinite(r)) {
-            std::cout << "NaN detected, aborting particle\n";
-            break;
+            std::cout << "!> NaN detected, aborting particle\n";
+            return false;
         }
 
         if (++steps > max_steps) {
-            std::cout << "Max steps reached\n";
-            break;
+            std::cout << "!> Max steps reached\n";
+            return false;
         }
 
         h = std::clamp(h, table.front().h, table.back().h);
-        AtmosData atm = getAtmosFromTable(h, table);
+        AtmosData atm = getAtmos(atmos_mode, h, table);
 
         // RK4 integration
         Vec3 k1_v = computeAcceleration(d, atm);
@@ -324,29 +364,23 @@ ImpactPoint toLatLon(const Vec3& pos) {
     return p;
 }
 
-std::vector<ImpactPoint> runMonteCarlo(
-    const Vec3& pos0,
-    const Vec3& vel0,
-    const std::vector<AtmosRow>& table,
-    int N)
-{
+std::vector<ImpactPoint> runMonteCarlo(const Vec3& pos0, const Vec3& vel0, const std::vector<AtmosRow>& table, int epoch, int N) {
     std::vector<ImpactPoint> impacts;
 
     for (int i = 0; i < N; ++i) {
-        std::cout << "Simulating debris " << i << std::endl;
+        std::cout << "Simulating debris " << i + 1 + N * epoch << std::endl;
 
         Debris d = sampleDebris(pos0, vel0);
 
-        propagateDebris(d, table, 0.01); // dt = 10 ms
-
-        impacts.push_back(toLatLon(d.pos));
+        if (propagateDebris(d, table, 0.01)) {  // dt = 10 ms
+            impacts.push_back(toLatLon(d.pos));
+        }
     }
 
     return impacts;
 }
 
 MatrixXd computeCovariance(const std::vector<XY>& pts, Vector2d& mean) {
-
     int N = pts.size();
 
     mean.setZero();
@@ -370,13 +404,7 @@ MatrixXd computeCovariance(const std::vector<XY>& pts, Vector2d& mean) {
     return cov;
 }
 
-void computeEllipse(
-    const Matrix2d& cov,
-    const Vector2d& mean,
-    double& major_axis,
-    double& minor_axis,
-    double& angle)
-{
+void computeEllipse(const Matrix2d& cov, const Vector2d& mean, double& major_axis, double& minor_axis, double& angle) {
     SelfAdjointEigenSolver<Matrix2d> solver(cov);
 
     Vector2d eigenvalues = solver.eigenvalues();
@@ -394,11 +422,7 @@ void computeEllipse(
     angle = std::atan2(major_vec(1), major_vec(0));
 }
 
-std::vector<XY> generateEllipsePoints(
-    const Vector2d& mean,
-    double a, double b, double angle,
-    int n = 100)
-{
+std::vector<XY> generateEllipsePoints(const Vector2d& mean, double a, double b, double angle, int n = 100) {
     std::vector<XY> pts;
 
     for (int i = 0; i < n; ++i) {
@@ -426,8 +450,7 @@ ImpactPoint xyToLatLon(const XY& p, const ImpactPoint& ref) {
     return out;
 }
 
-std::vector<State> generateTrajectory(double dt = 0.1)
-{
+std::vector<State> generateTrajectory(double dt = 0.1) {
     std::vector<State> traj;
 
     // Initial conditions (ENU)
@@ -456,8 +479,7 @@ std::vector<State> generateTrajectory(double dt = 0.1)
     return traj;
 }
 
-Vec3 enuToECEF(const Vec3& enu, double lat, double lon)
-{
+Vec3 enuToECEF(const Vec3& enu, double lat, double lon) {
     double sinLat = sin(lat);
     double cosLat = cos(lat);
     double sinLon = sin(lon);
@@ -480,7 +502,6 @@ Vec3 enuToECEF(const Vec3& enu, double lat, double lon)
 }
 
 void ellipse_main(std::vector<ImpactPoint> v_ip) {
-
     // 1. Project to XY
     std::vector<XY> pts;
     for (auto& p : v_ip) {
@@ -507,7 +528,15 @@ void ellipse_main(std::vector<ImpactPoint> v_ip) {
     saveCSV(ellipse_ll, "ellipse.csv");
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr,"Usage: %s mode(0: VACUUM, 1: ISA, 2: ERA5)\n", argv[0]);
+        return 1;
+    }
+    atmos_mode = AtmosMode(atoi(argv[1]));
+
+    std::cout << "RNG seed = " << seed << std::endl;
+
     auto table = loadAtmosTable("data/at20260325.csv");
     sortAtmosTable(table);
 
@@ -521,7 +550,8 @@ int main() {
     Vec3 ref_ecef = geodeticToECEF(lat, lon, alt);
 
     // ECEF trajectory from telemetry
-    auto trajectory = generateTrajectory();
+    auto trajectory = generateTrajectory(10);   // dt sec
+    int epoch = 0;
     for (auto& tj : trajectory) {
         // For each trajectory point
         Vec3 enu = tj.pos;
@@ -533,9 +563,10 @@ int main() {
             ref_ecef.z + ecef_offset.z
         };
         
-        v_ip = runMonteCarlo(ecef_pos, tj.vel, table, 10);
+        v_ip = runMonteCarlo(ecef_pos, tj.vel, table, epoch, 10);
         v_ip_sum.reserve(v_ip_sum.size() + v_ip.size());
         v_ip_sum.insert(v_ip_sum.end(), v_ip.begin(), v_ip.end());
+        epoch++;
     };
 
     saveCSV(v_ip_sum, "impact.csv");
