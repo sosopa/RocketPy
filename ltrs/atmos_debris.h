@@ -4,6 +4,7 @@
 #include <sstream>
 #include <string>
 #include <iostream>
+#include <iomanip>
 #include <random>
 #include <algorithm>
 
@@ -22,6 +23,7 @@ enum class AtmosMode {
     ERA5
 };
 AtmosMode atmos_mode = AtmosMode::VACUUM;
+std::string modeStr;
 
 const double T0 = 288.15;     // K
 const double P0 = 101325.0;   // Pa
@@ -31,6 +33,12 @@ const double R  = 287.05;     // J/(kg·K)
 const double MU = 3.986004418e14;       // [m^3/s^2] Earth gravitational parameter
 const double OMEGA_EARTH = 7.2921159e-5; // [rad/s]
 const double EARTH_RADIUS = 6371000.0;  // [m]
+
+// WGS84 constants
+constexpr double WGS84_A  = 6378137.0;                 // semi-major axis
+constexpr double WGS84_F  = 1.0 / 298.257223563;      // flattening
+constexpr double WGS84_B  = WGS84_A * (1.0 - WGS84_F);
+constexpr double WGS84_E2 = WGS84_F * (2.0 - WGS84_F);
 
 unsigned int seed = std::random_device{}();
 std::mt19937 rng(seed);

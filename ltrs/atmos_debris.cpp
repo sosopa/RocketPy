@@ -6,6 +6,24 @@ inline double lerp(double a, double b, double t) {
     return a + t * (b - a);
 }
 
+std::string atmosModeToString(AtmosMode mode)
+{
+    switch (mode)
+    {
+        case AtmosMode::VACUUM:
+            return "vacuum";
+
+        case AtmosMode::ISA:
+            return "isa";
+
+        case AtmosMode::ERA5:
+            return "era5";
+
+        default:
+            return "unknown";
+    }
+}
+
 std::vector<AtmosRow> loadAtmosTable(const std::string& filename) {
     std::vector<AtmosRow> table;
     std::ifstream file(filename);
@@ -180,19 +198,80 @@ Vec3 randomDirection() {
     );
 }
 
-Vec3 geodeticToECEF(double lat, double lon, double h) {
-    double R = EARTH_RADIUS + h;
+Vec3 enuToECEF(const Vec3& enu, double lat, double lon) {
+    double sinLat = sin(lat);
+    double cosLat = cos(lat);
+    double sinLon = sin(lon);
+    double cosLon = cos(lon);
 
-    double clat = cos(lat);
-    double slat = sin(lat);
-    double clon = cos(lon);
-    double slon = sin(lon);
+    Vec3 ecef;
 
-    return Vec3(
-        R * clat * clon,
-        R * clat * slon,
-        R * slat
-    );
+    ecef.x = -sinLon * enu.x
+             - sinLat * cosLon * enu.y
+             + cosLat * cosLon * enu.z;
+
+    ecef.y =  cosLon * enu.x
+             - sinLat * sinLon * enu.y
+             + cosLat * sinLon * enu.z;
+
+    ecef.z =  cosLat * enu.y
+             + sinLat * enu.z;
+
+    return ecef;
+}
+
+Vec3 geodeticToECEF(double lat, double lon, double h)
+{
+    double sinLat = sin(lat);
+    double cosLat = cos(lat);
+    double sinLon = sin(lon);
+    double cosLon = cos(lon);
+
+    double N = WGS84_A / sqrt(1.0 - WGS84_E2 * sinLat * sinLat);
+
+    double x = (N + h) * cosLat * cosLon;
+    double y = (N + h) * cosLat * sinLon;
+    double z = (N * (1.0 - WGS84_E2) + h) * sinLat;
+
+    return {x, y, z};
+}
+
+void ecefToGeodetic(const double& x, const double& y, const double& z,
+    double& lat, double& lon, double& alt)
+{
+    lon = atan2(y, x);
+
+    double p = sqrt(x*x + y*y);
+
+    lat = atan2(z, p * (1.0 - WGS84_E2));
+
+    for (int i = 0; i < 10; ++i)
+    {
+        double sinLat = sin(lat);
+
+        double N =
+            WGS84_A /
+            sqrt(1.0 - WGS84_E2 * sinLat * sinLat);
+
+        alt = p / cos(lat) - N;
+
+        double newLat =
+            atan2(
+                z,
+                p * (
+                    1.0 -
+                    WGS84_E2 * (N / (N + alt))
+                )
+            );
+
+        if (fabs(newLat - lat) < 1e-12)
+        {
+            lat = newLat;
+            break;
+        }
+
+        lat = newLat;
+    }
 }
 
 void saveCSV(const std::vector<ImpactPoint>& pts, const std::string& filename) {
@@ -202,6 +281,44 @@ void saveCSV(const std::vector<ImpactPoint>& pts, const std::string& filename) {
     for (const auto& p : pts) {
         file << p.lat * 180.0 / M_PI << "," 
              << p.lon * 180.0 / M_PI << "\n";
+    }
+}
+
+void saveTraj(const std::vector<State>& traj, const std::string& filename,
+    double refLat, double refLon, double refAlt) 
+{
+    std::ofstream file(filename);
+
+    file << "time,lat,lon,alt\n";
+
+    Vec3 refECEF = geodeticToECEF(refLat, refLon, refAlt);
+
+    for (const auto& s : traj)
+    {
+        Vec3 offset = enuToECEF(s.pos, refLat, refLon);
+
+        Vec3 ecef = {
+            refECEF.x + offset.x,
+            refECEF.y + offset.y,
+            refECEF.z + offset.z
+        };
+
+        double lat, lon, alt;
+
+        ecefToGeodetic(
+            ecef.x,
+            ecef.y,
+            ecef.z,
+            lat,
+            lon,
+            alt);
+
+        file << std::fixed
+             << std::setprecision(6)
+             << s.t << ","
+             << lat * 180.0 / M_PI << ","
+             << lon * 180.0 / M_PI << ","
+             << alt << "\n";
     }
 }
 
@@ -450,11 +567,11 @@ ImpactPoint xyToLatLon(const XY& p, const ImpactPoint& ref) {
     return out;
 }
 
-std::vector<State> generateTrajectory(double dt = 0.1) {
+std::vector<State> generateTrajectory(double dt = 0.1, double alt = 10000) {
     std::vector<State> traj;
 
     // Initial conditions (ENU)
-    Vec3 pos = {0.0, 0.0, 10000.0};   // meters
+    Vec3 pos = {0.0, 0.0, alt};   // meters
     Vec3 vel = {250.0, 50.0, -20.0};  // m/s
 
     const double g = 9.81;
@@ -477,28 +594,6 @@ std::vector<State> generateTrajectory(double dt = 0.1) {
     }
 
     return traj;
-}
-
-Vec3 enuToECEF(const Vec3& enu, double lat, double lon) {
-    double sinLat = sin(lat);
-    double cosLat = cos(lat);
-    double sinLon = sin(lon);
-    double cosLon = cos(lon);
-
-    Vec3 ecef;
-
-    ecef.x = -sinLon * enu.x
-             - sinLat * cosLon * enu.y
-             + cosLat * cosLon * enu.z;
-
-    ecef.y =  cosLon * enu.x
-             - sinLat * sinLon * enu.y
-             + cosLat * sinLon * enu.z;
-
-    ecef.z =  cosLat * enu.y
-             + sinLat * enu.z;
-
-    return ecef;
 }
 
 void ellipse_main(std::vector<ImpactPoint> v_ip) {
@@ -525,7 +620,7 @@ void ellipse_main(std::vector<ImpactPoint> v_ip) {
         ellipse_ll.push_back(xyToLatLon(p, v_ip[0])); // use first or mean
     }
 
-    saveCSV(ellipse_ll, "ellipse.csv");
+    saveCSV(ellipse_ll, "ellipse_" + modeStr + ".csv");
 }
 
 int main(int argc, char *argv[]) {
@@ -534,6 +629,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     atmos_mode = AtmosMode(atoi(argv[1]));
+    modeStr = atmosModeToString(atmos_mode);
 
     std::cout << "RNG seed = " << seed << std::endl;
 
@@ -549,8 +645,14 @@ int main(int argc, char *argv[]) {
     double alt = 10000.0;
     Vec3 ref_ecef = geodeticToECEF(lat, lon, alt);
 
-    // ECEF trajectory from telemetry
-    auto trajectory = generateTrajectory(10);   // dt sec
+    // Trajectory from telemetry
+    auto trajectory = generateTrajectory(10, alt);   // dt sec
+    
+    if (atmos_mode == AtmosMode::VACUUM) {
+        saveTraj(trajectory, "trajectory.csv", lat, lon, alt);
+    }
+
+    // Run Monte Carlo
     int epoch = 0;
     for (auto& tj : trajectory) {
         // For each trajectory point
@@ -562,14 +664,16 @@ int main(int argc, char *argv[]) {
             ref_ecef.y + ecef_offset.y,
             ref_ecef.z + ecef_offset.z
         };
-        
-        v_ip = runMonteCarlo(ecef_pos, tj.vel, table, epoch, 10);
+
+        Vec3 ecef_vel = enuToECEF(tj.vel, lat, lon);
+
+        v_ip = runMonteCarlo(ecef_pos, ecef_vel, table, epoch, 10);
         v_ip_sum.reserve(v_ip_sum.size() + v_ip.size());
         v_ip_sum.insert(v_ip_sum.end(), v_ip.begin(), v_ip.end());
         epoch++;
     };
 
-    saveCSV(v_ip_sum, "impact.csv");
+    saveCSV(v_ip_sum, "impact_" + modeStr + ".csv");
 
     ellipse_main(v_ip_sum);
 

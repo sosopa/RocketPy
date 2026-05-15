@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 
 # 1. Load CSV (with header)
+traj = pd.read_csv("trajectory.csv")
+
 vac = pd.read_csv("impact_vacuum.csv")
 isa = pd.read_csv("impact_isa.csv")
 era5 = pd.read_csv("impact_era5.csv")
@@ -11,6 +13,8 @@ ell_isa = pd.read_csv("ellipse_isa.csv")
 ell_era5 = pd.read_csv("ellipse_era5.csv")
 
 # 2. Extract columns
+traj_lat,traj_lon = traj["lat"], traj["lon"]
+
 vac_lat, vac_lon = vac["lat"], vac["lon"]
 isa_lat, isa_lon = isa["lat"], isa["lon"]
 era5_lat, era5_lon = era5["lat"], era5["lon"]
@@ -71,12 +75,18 @@ plt.tight_layout()
 plt.show()
 
 # 5. Overlay plot (very useful for comparison)
-plt.figure(figsize=(6,6))
+plt.figure(figsize=(8,8))
 
+# trajectory
+plt.plot(traj_lon, traj_lat, linewidth=2, label="Trajectory")
+plt.scatter(traj_lon, traj_lat, c=traj["alt"], s=2)
+
+# impacts
 plt.scatter(vac_lon, vac_lat, s=5, label="Vacuum")
 plt.scatter(isa_lon, isa_lat, s=5, label="ISA")
 plt.scatter(era5_lon, era5_lat, s=5, label="ERA5")
 
+# ellipses
 plt.plot(ev_lon, ev_lat, label="Vac ellipse")
 plt.plot(ei_lon, ei_lat, label="ISA ellipse")
 plt.plot(ee_lon, ee_lat, label="ERA5 ellipse")
